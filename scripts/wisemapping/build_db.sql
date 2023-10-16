@@ -1,6 +1,6 @@
 DROP DATABASE IF EXISTS wisemapping;
 
-CREATE USER 'root'@'%' IDENTIFIED BY 'wisemappingPassword123';
+CREATE USER 'root'@'%' IDENTIFIED BY 'Password123';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 CREATE DATABASE IF NOT EXISTS wisemapping
@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS wisemapping
 
 USE wisemapping;
 GRANT ALL ON wisemapping.* TO 'wisemapping'@'%';
-SET PASSWORD FOR 'wisemapping'@'%' = PASSWORD('wisemappingPassword123');
+SET PASSWORD FOR 'wisemapping'@'%' = PASSWORD('Password123');
 FLUSH PRIVILEGES;
 
 
