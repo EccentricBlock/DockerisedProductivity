@@ -1,0 +1,201 @@
+version: '3.7'
+
+services:
+  traefik:
+    image: traefik
+    container_name: revproxy
+    command: >
+        --serversTransport.insecureSkipVerify=true
+        --api.insecure=false
+        --api.dashboard=false
+        --api=false
+        --log=true
+        --log.level=DEBUG
+        --accessLog=true
+        --accessLog.bufferingSize=100
+        --providers.docker=true
+        --providers.docker.endpoint=unix:///var/run/docker.sock
+        --providers.docker.exposedbydefault=true
+        --entrypoints.http.address=:80/tcp
+        --entrypoints.https.address=:443/tcp
+        --entrypoints.mysql.address=:3306/tcp
+        --entrypoints.ssh.address=:2022/tcp
+#        --entrypoints.web.http.redirections.entrypoint.to=https
+#        --entrypoints.web.http.redirections.entrypoint.scheme=https
+#        --accessLog.filePath=/traefik.log
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80" #generic http entrypoint
+      - "443:443" #generic https entrypoint
+      - "2022:2022" # SSH Port Forward
+      - "3306:3306" #traefik web ui
+      - "8080:8080" #traefik web ui
+    volumes:
+      # NOTE: THe TARGET DOCKER SOCK IS NOT IN THE DEFAULT LOCATION;
+      #https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
+      #- /mnt/wsl/shared-docker/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.frontend.headers.browserXSSFilter=true"
+      - "traefik.frontend.headers.contentTypeNosniff=true"
+      - "traefik.frontend.headers.customResponseHeaders: X-Robots-Tag:noindex,nofollow,nosnippet,noarchive,notranslate,noimageindex"
+      - "traefik.frontend.headers.frameDeny=true"
+
+  # docker run --rm -it --entrypoint bash amir20/dozzle
+  # useful log viewer for running and crashed containers
+  logserver:
+    container_name: logserver
+    image: amir20/dozzle
+#    healthcheck:
+#      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080 || exit 1"]
+#      interval: 1m30s
+#      timeout: 10s
+#      retries: 5    
+#      start_period: 15s
+    volumes:
+      # NOTE: THe TARGET DOCKER SOCK IS NOT IN THE DEFAULT LOCATION;
+      #https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
+      #- /mnt/wsl/shared-docker/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
+      - /var/run/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
+    environment:
+      - DOZZLE_NO_ANALYTICS=true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.logserver.rule=Host(`${LOGS_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.services.logserver.loadbalancer.server.port=8080"
+
+#docker run --rm -it --entrypoint bash jgraph/drawio
+  drawio:
+    image: jgraph/drawio
+    container_name: drawio
+    restart: unless-stopped
+ #   ports:
+ #     - 8080:8080  
+ #     - 8443:8443  
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    environment:
+      DRAWIO_BASE_URL: "http://${DRAWIO_DOMAIN}.${ROOT_DOMAIN}"
+#      - DRAWIO_GOOGLE_CLIENT_ID=abcd1234   # Google Drive
+#      - DRAWIO_MSGRAPH_CLIENT_ID=abcd1234   # OneDrive
+#      - DRAWIO_GITLAB_ID=abcd1234   # GitLab ID
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.drawio.rule=Host(`${DRAWIO_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.services.drawio.loadbalancer.server.port=8080"
+
+#docker run --rm -it --entrypoint bash meltyshev/planka
+  kanban:
+    image: ghcr.io/plankanban/planka:dev
+    container_name: kanban
+    command: >
+      bash -c
+        "for i in `seq 1 30`; do
+          ./start.sh &&
+          s=$$? && break || s=$$?;
+          echo \"Tried $$i times. Waiting 5 seconds...\";
+          sleep 5;
+        done; (exit $$s)"
+    restart: unless-stopped
+#    healthcheck:
+#      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:1337/ || exit 1"]
+#      interval: 1m30s
+#      timeout: 10s
+#      retries: 5   
+#      start_period: 15s 
+    volumes:
+      - ./data/kanban/user-avatars:/app/public/user-avatars
+      - ./data/kanban/project-background-images:/app/public/project-background-images
+      - ./data/kanban/attachments:/app/public/attachments
+    environment:
+#      - BASE_URL=https://planka.noodle.local
+      BASE_URL: "http://${PLANKA_DOMAIN}.${ROOT_DOMAIN}"
+      DATABASE_URL: "${PLANKA_DB_URL}"
+      SECRET_KEY: "${PLANKA_SECRET_KEY}"
+    depends_on:
+      - kanbandb
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kanban-http.entrypoints=http"
+      - "traefik.http.routers.kanban-http.rule=Host(`${PLANKA_DOMAIN}.${ROOT_DOMAIN}`)"
+      #- "traefik.http.routers.kanban-http.middlewares=kanban-https"
+      - "traefik.http.services.kanban-http.loadbalancer.server.port=1337"
+      #- "traefik.http.middlewares.kanban-https.redirectscheme.scheme=https"
+      #- "traefik.http.routers.kanban.entrypoints=https"
+      #- "traefik.http.routers.kanban.rule=Host(`planka.noodle.local`)"
+      #- "traefik.http.routers.kanban.tls=true"
+      #- "traefik.docker.network=traefik_proxy"
+
+
+  kanbandb:
+    image: postgres:alpine
+    restart: unless-stopped
+    container_name: plankadb
+    volumes:
+      - ./data/kanban-db:/var/lib/postgresql/data/db
+    environment:
+      user: "1000:1000"
+      POSTGRES_DB: ${PLANKA_DB_NAME}
+      POSTGRES_USER: ${PLANKA_DB_USER}
+      POSTGRES_PASSWORD: ${PLANKA_DB_PASS}
+      PGDATA: /var/lib/postgresql/data/db
+      #- POSTGRES_HOST_AUTH_METHOD=trust
+
+  mindmapdb:
+    image: mysql
+    restart: unless-stopped
+    container_name: mindmapdb
+    volumes:
+      - ./data/mindmap-db:/var/lib/mysql
+      # The below script will auto build the DB on first start (needed otherwsie mind map wont work)
+      - ./scripts/wisemapping/build_db.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      user: "1000:1000"
+      MYSQL_DATABASE: ${WISEMAPPING_DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${WISEMAPPING_ROOT_PASS}      
+    labels:
+      # enable SSH port forward
+      - "traefik.tcp.routers.minmap-mysql.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.minmap-mysql.entrypoints=mysql"
+      - "traefik.tcp.routers.minmap-mysql.service=minmap-mysql-svc"
+      - "traefik.tcp.services.minmap-mysql-svc.loadbalancer.server.port=3306"
+
+  #docker run --rm -it --entrypoint bash wisemapping/wisemapping
+  mindmap:
+    image: wisemapping/wisemapping
+    restart: unless-stopped
+    container_name: mindmap
+    depends_on:
+      - mindmapdb
+#    healthcheck:
+#      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
+#      interval: 1m30s
+#      timeout: 10s
+#      retries: 5     
+#      start_period: 15s   
+    volumes:
+      # Map below if you want to use the inbuilt/local H2
+      #- ./data/mindmap-db:/var/lib/wisemapping/db
+      #- ./data/mindmap-db:/var/lib/wise-db
+           - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties
+    environment:
+#      - BASE_URL=https://planka.noodle.local
+      BASE_URL: "http://${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mindmap-http.entrypoints=http"
+      - "traefik.http.routers.mindmap-http.rule=Host(`${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}`)"
+      #- "traefik.http.routers.mindmap-http.middlewares=planka-https"
+      - "traefik.http.services.mindmap-http.loadbalancer.server.port=8080"
+      #- "traefik.http.middlewares.mindmap-https.redirectscheme.scheme=https"
+      #- "traefik.http.routers.mindmap.entrypoints=https"
+      #- "traefik.http.routers.mindmap.rule=Host(`mindmap.noodle.local`)"
+      #- "traefik.http.routers.mindmap.tls=true"
+      #- "traefik.docker.network=traefik_proxy"
