@@ -1,35 +1,19 @@
-DROP DATABASE IF EXISTS wisemapping;
+/* https://bitbucket.org/wisemapping/wisemapping-open-source/src/develop/config/database/mysql/ */
 
-CREATE USER 'root'@'%' IDENTIFIED BY 'Password123';
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-CREATE DATABASE IF NOT EXISTS wisemapping
+DROP DATABASE IF EXISTS mindmap;
+
+
+
+CREATE USER IF NOT EXISTS 'mindmap'@'%' IDENTIFIED BY 'Password123';
+
+CREATE DATABASE IF NOT EXISTS mindmap
   CHARACTER SET = 'utf8'
   COLLATE = 'utf8_unicode_ci';
-
-
-USE wisemapping;
-GRANT ALL ON wisemapping.* TO 'wisemapping'@'%';
-SET PASSWORD FOR 'wisemapping'@'%' = PASSWORD('Password123');
+GRANT ALL ON mindmap.* TO 'mindmap'@'%';
 FLUSH PRIVILEGES;
+COMMIT;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+USE mindmap;
 
 CREATE TABLE COLLABORATOR (
   id            INTEGER            NOT NULL PRIMARY KEY AUTO_INCREMENT,

@@ -184,7 +184,16 @@ services:
       # Map below if you want to use the inbuilt/local H2
       #- ./data/mindmap-db:/var/lib/wisemapping/db
       #- ./data/mindmap-db:/var/lib/wise-db
-           - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties
+
+###################################################################################################################
+###################################################################################################################
+#             RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          
+###################################################################################################################
+      # Run on a blank MySQL database!, creates the DB
+      # COMMENT OUT AFTER FIRST RUN OR DB WILL WIPE!
+      #     - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties
+
+###################################################################################################################      
     environment:
 #      - BASE_URL=https://planka.noodle.local
       BASE_URL: "http://${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}"
