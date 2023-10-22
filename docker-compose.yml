@@ -154,8 +154,18 @@ services:
     container_name: mindmapdb
     volumes:
       - ./data/mindmap-db:/var/lib/mysql
+
+###################################################################################################################
+###################################################################################################################
+#             RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          
+###################################################################################################################
+      # Run on a blank MySQL database!, creates the DB
+      # COMMENT OUT AFTER FIRST RUN OR DB WILL WIPE!
+
       # The below script will auto build the DB on first start (needed otherwsie mind map wont work)
-      - ./scripts/wisemapping/build_db.sql:/docker-entrypoint-initdb.d/init.sql
+      #- ./scripts/wisemapping/build_db.sql:/docker-entrypoint-initdb.d/init.sql
+
+###################################################################################################################      
     environment:
       user: "1000:1000"
       MYSQL_DATABASE: ${WISEMAPPING_DB_NAME}
@@ -185,15 +195,7 @@ services:
       #- ./data/mindmap-db:/var/lib/wisemapping/db
       #- ./data/mindmap-db:/var/lib/wise-db
 
-###################################################################################################################
-###################################################################################################################
-#             RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          
-###################################################################################################################
-      # Run on a blank MySQL database!, creates the DB
-      # COMMENT OUT AFTER FIRST RUN OR DB WILL WIPE!
-      #     - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties
-
-###################################################################################################################      
+       - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties      
     environment:
 #      - BASE_URL=https://planka.noodle.local
       BASE_URL: "http://${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}"

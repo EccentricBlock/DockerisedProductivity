@@ -2,7 +2,7 @@
 # Usage
 
 ## FIRST USE
-The DB is blank, you need to uncomment the volume on line `194` of the `docker-compose.yml` file.  This will create a new DB and schema within the MySQL database, IF YOU DO NOT COMMENT OUT THE VOLUME THE DB WILL WIPE UPON NEXT START UP.
+The DB is blank, you need to uncomment the volume on line `166` of the `docker-compose.yml` file.  This will create a new DB and schema within the MySQL database, IF YOU DO NOT COMMENT OUT THE VOLUME THE DB WILL WIPE UPON NEXT START UP.
 
 ## Running
 
