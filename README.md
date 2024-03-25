@@ -19,22 +19,25 @@ file.  Some additional guidance is provided within the `.env` file.
 # DNS
 Plase the following in your hosts file or DNS server and update the IP and desired domain:
 
-127.0.0.1 admin.noodle.local logs.noodle.local kanban.noodle.local mindmap.noodle.local draw.noodle.local
+`127.0.0.1 admin.eccentic.local logs.eccentic.local task.eccentic.local mindmap.eccentic.local draw.eccentic.local bookstack.eccentic.local backup.eccentic.local`
 
-* admin - Traefik (http://admin.noodle.local:8080/)  [Currently Secured, look at `command` compose settings]
-* logs  - Dozzle Container Log Viewer (http://logs.noodle.local/)
-* kanban - Planka KanBan (http://kanban.noodle.local/)
-* mindmap - Wisemapping Mindmap (http://mindmap.noodle.local/)
-* draw - Draw.io Tool (http://draw.noodle.local/)
+
+| DNS                       | Description                                 | Software |
+| ------------------------- | ------------------------- | ------------------------------------------- |
+| admin.eccentric.local                              | Reverse Proxy                                      | [Traefik](https://traefik.io/traefik/)                                                 |
+| logs.eccentric.local                               | Log Viewer                                         | [Dozzle](https://dozzle.dev/)                                                          |
+| task.eccentric.local                               | Task Management                                    | [Leantime](https://leantime.io/)                                                       |
+| mindmap.eccentric.local                            | Mind Map                                           | [Wisemapping](https://www.wisemapping.com/)                                            |
+| bookstack.eccentric.local                          | Info Storage/Organisation                          | [Bookstack](https://www.bookstackapp.com/)                                             |
+| draw.eccentric.local                               | Diagramming                                        | [Draw.io](https://app.diagrams.net/)                                                   |
+| backup.eccentric.local                               | Backups                                        | [Duplicati](https://www.duplicati.com/)                                                   |
+
 
 
 
 #####################################################################################
         ROUGH NOTES ON HOW TO GET WISEMAPPING WORKING MANUALLY
 #####################################################################################
-
-
-
 
 
 
@@ -65,7 +68,7 @@ copy "app.properties" to the config folder
 
 Im running in a VM, add this to your hosts file or update your DNS acordingly..
 
-192.168.8.240 traefik.noodle.local logs.noodle.local kanban.noodle.local mindmap.noodle.local  draw.noodle.local paperless.noodle.local
+192.168.8.240 traefik.eccentic.local logs.eccentic.local kanban.eccentic.local mindmap.eccentic.local  draw.eccentic.local paperless.eccentic.local
 
 
 

@@ -1,25 +1,41 @@
 version: '3.7'
+#        --serversTransport.insecureSkipVerify=true
 
+
+#        --entrypoints.web.http.redirections.entrypoint.to=https
+#        --entrypoints.web.http.redirections.entrypoint.scheme=https
+#        --entrypoints.web.http.redirections.entrypoint.permanent=true   
 services:
   traefik:
     image: traefik
     container_name: revproxy
     command: >
-        --serversTransport.insecureSkipVerify=true
-        --api.insecure=false
-        --api.dashboard=false
-        --api=false
+        --api.insecure=true
+        --api.dashboard=true
+        --api=true
         --log=true
         --log.level=DEBUG
         --accessLog=true
         --accessLog.bufferingSize=100
         --providers.docker=true
         --providers.docker.endpoint=unix:///var/run/docker.sock
-        --providers.docker.exposedbydefault=true
+        --providers.docker.exposedbydefault=false
         --entrypoints.http.address=:80/tcp
         --entrypoints.https.address=:443/tcp
-        --entrypoints.mysql.address=:3306/tcp
-        --entrypoints.ssh.address=:2022/tcp
+
+        
+
+
+#        --certificatesResolvers.internalca.acme.caServer="https://${CA_DNS_FQDN}/acme/acme/directory"
+#        --certificatesResolvers.internalca.acme.email="${CA_EMAIL}"
+#        --certificatesResolvers.internalca.acme.storage=/acme/acme.json
+#        --certificatesResolvers.internalca.acme.keyType=EC256
+#        --certificatesResolvers.internalca.acme.tlschallenge=true
+#        --certificatesResolvers.internalca.acme.httpChallenge=true
+#        --certificatesResolvers.internalca.acme.httpChallenge.entryPoint=http      
+         #--entrypoints.acmeca.address=:9000/tcp  
+#        --entrypoints.mqtt.address=:1883/tcp
+#        --entrypoints.mqttwebsocket.address=:9001/tcp
 #        --entrypoints.web.http.redirections.entrypoint.to=https
 #        --entrypoints.web.http.redirections.entrypoint.scheme=https
 #        --accessLog.filePath=/traefik.log
@@ -28,46 +44,39 @@ services:
     ports:
       - "80:80" #generic http entrypoint
       - "443:443" #generic https entrypoint
-      - "2022:2022" # SSH Port Forward
-      - "3306:3306" #traefik web ui
       - "8080:8080" #traefik web ui
+      - "1883:1883" # mqtt
+      - "9001:9001" # mqttwebsocket
+      - "8086:8086" # InfluxDB
+      - "9000:9000" # AcmeCA
     volumes:
-      # NOTE: THe TARGET DOCKER SOCK IS NOT IN THE DEFAULT LOCATION;
-      #https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
-      #- /mnt/wsl/shared-docker/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
+#      - ./data/acmeca/certs/root_ca.crt:/rootca.crt
+#      - ./data/traefik/acme/:/acme/
+    environment:
+      - TZ=${DEFAULT_TIMEZONE}
+      - PUID=${DEFAULT_PUID}
+      - GUID=${DEFAULT_PGID}
+#      - LEGO_CA_CERTIFICATES=/rootca.crt
+#      - LEGO_CA_SERVER_NAME=${CA_DNS_FQDN}
+#    depends_on:
+#      - acmeca      
+    networks:
+      default:
+        aliases:
+          - "${TRAEFIK_DOMAIN}.${ROOT_DOMAIN}"      
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN}.${ROOT_DOMAIN}`)"
+      #- traefik.docker.network=traefik_proxy
       - "traefik.frontend.headers.browserXSSFilter=true"
       - "traefik.frontend.headers.contentTypeNosniff=true"
       - "traefik.frontend.headers.customResponseHeaders: X-Robots-Tag:noindex,nofollow,nosnippet,noarchive,notranslate,noimageindex"
       - "traefik.frontend.headers.frameDeny=true"
+      - "traefik.http.routers.traefik.entrypoints=http"
+      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN}.${ROOT_DOMAIN}`)"
+#      - "traefik.http.routers.traefik.tls=true"
+#      - "traefik.http.routers.traefik.tls.certresolver=internalca"
 
-  # docker run --rm -it --entrypoint bash amir20/dozzle
-  # useful log viewer for running and crashed containers
-  logserver:
-    container_name: logserver
-    image: amir20/dozzle
-#    healthcheck:
-#      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080 || exit 1"]
-#      interval: 1m30s
-#      timeout: 10s
-#      retries: 5    
-#      start_period: 15s
-    volumes:
-      # NOTE: THe TARGET DOCKER SOCK IS NOT IN THE DEFAULT LOCATION;
-      #https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
-      #- /mnt/wsl/shared-docker/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
-      - /var/run/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
-    environment:
-      - DOZZLE_NO_ANALYTICS=true
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.logserver.rule=Host(`${LOGS_DOMAIN}.${ROOT_DOMAIN}`)"
-      - "traefik.http.services.logserver.loadbalancer.server.port=8080"
-
-#docker run --rm -it --entrypoint bash jgraph/drawio
   drawio:
     image: jgraph/drawio
     container_name: drawio
@@ -82,78 +91,140 @@ services:
       retries: 5
       start_period: 15s
     environment:
+      TZ: ${DEFAULT_TIMEZONE}
+      PUID: ${DEFAULT_PUID}
+      GUID: ${DEFAULT_PGID}    
       DRAWIO_BASE_URL: "http://${DRAWIO_DOMAIN}.${ROOT_DOMAIN}"
 #      - DRAWIO_GOOGLE_CLIENT_ID=abcd1234   # Google Drive
 #      - DRAWIO_MSGRAPH_CLIENT_ID=abcd1234   # OneDrive
 #      - DRAWIO_GITLAB_ID=abcd1234   # GitLab ID
+    depends_on:
+      - traefik  
+    networks:
+      default:
+        aliases:
+            - "${DRAWIO_DOMAIN}.${ROOT_DOMAIN}"        
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.drawio.rule=Host(`${DRAWIO_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.drawio.entrypoints=http"
+#      - "traefik.http.routers.drawio.tls=true"
+#      - "traefik.http.routers.drawio.tls.certresolver=internalca"      
       - "traefik.http.services.drawio.loadbalancer.server.port=8080"
 
-#docker run --rm -it --entrypoint bash meltyshev/planka
-  kanban:
-    image: ghcr.io/plankanban/planka:dev
-    container_name: kanban
-    command: >
-      bash -c
-        "for i in `seq 1 30`; do
-          ./start.sh &&
-          s=$$? && break || s=$$?;
-          echo \"Tried $$i times. Waiting 5 seconds...\";
-          sleep 5;
-        done; (exit $$s)"
-    restart: unless-stopped
-#    healthcheck:
-#      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:1337/ || exit 1"]
-#      interval: 1m30s
-#      timeout: 10s
-#      retries: 5   
-#      start_period: 15s 
-    volumes:
-      - ./data/kanban/user-avatars:/app/public/user-avatars
-      - ./data/kanban/project-background-images:/app/public/project-background-images
-      - ./data/kanban/attachments:/app/public/attachments
+
+  bookstack:
+    image: lscr.io/linuxserver/bookstack
+    container_name: bookstack
     environment:
-#      - BASE_URL=https://planka.noodle.local
-      BASE_URL: "http://${PLANKA_DOMAIN}.${ROOT_DOMAIN}"
-      DATABASE_URL: "${PLANKA_DB_URL}"
-      SECRET_KEY: "${PLANKA_SECRET_KEY}"
+      PUID: "${DEFAULT_PUID}"
+      PGID: "${DEFAULT_PGID}"
+      APP_URL: "http://${BOOKSTACK_DOMAIN}.${ROOT_DOMAIN}"
+      DB_HOST: "${BOOKSTACK_DB_HOST}"
+      DB_PORT: "${BOOKSTACK_DB_PORT}"
+      DB_USER: "${BOOKSTACK_DB_USER}"
+      DB_PASS: "${BOOKSTACK_DB_PASS}"
+      DB_DATABASE: "${BOOKSTACK_DB_DATABASE}"
+      TIMEZONE: "${DEFAULT_TIMEZONE}"
+      DRAWIO_HOST: "${DRAWIO_DOMAIN}.${ROOT_DOMAIN}"
+      ENABLE_DRAWIO: 1
+      APP_DEFAULT_DARK_MODE: 1
+      WAIT_DB_INIT: 1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 5     
+      start_period: 15s         
+    volumes:
+      - ./data/bookstack_app_data:/config
+    restart: unless-stopped
     depends_on:
-      - kanbandb
+      - bookstack_db
+      - traefik
+    networks:
+      default:
+        aliases:
+            - "${BOOKSTACK_DOMAIN}.${ROOT_DOMAIN}"        
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.kanban-http.entrypoints=http"
-      - "traefik.http.routers.kanban-http.rule=Host(`${PLANKA_DOMAIN}.${ROOT_DOMAIN}`)"
-      #- "traefik.http.routers.kanban-http.middlewares=kanban-https"
-      - "traefik.http.services.kanban-http.loadbalancer.server.port=1337"
-      #- "traefik.http.middlewares.kanban-https.redirectscheme.scheme=https"
-      #- "traefik.http.routers.kanban.entrypoints=https"
-      #- "traefik.http.routers.kanban.rule=Host(`planka.noodle.local`)"
-      #- "traefik.http.routers.kanban.tls=true"
-      #- "traefik.docker.network=traefik_proxy"
+      #- "traefik.http.routers.bookstack-http.entrypoints=http"
+      - "traefik.http.routers.bookstack.rule=Host(`${BOOKSTACK_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.bookstack.entrypoints=http"
+      - "traefik.tcp.routers.bookstack.service=bookstack-svc"
+      - "traefik.tcp.services.bookstack-svc.loadbalancer.server.port=80"      
+      #- "traefik.http.routers.bookstack.tls=true"
+      #- "traefik.http.routers.bookstack.tls.certresolver=internalca"      
 
 
-  kanbandb:
-    image: postgres:alpine
-    restart: unless-stopped
-    container_name: plankadb
-    volumes:
-      - ./data/kanban-db:/var/lib/postgresql/data/db
+  bookstack_db:
+    image: lscr.io/linuxserver/mariadb
+    container_name: bookstack_db
     environment:
-      user: "1000:1000"
-      POSTGRES_DB: ${PLANKA_DB_NAME}
-      POSTGRES_USER: ${PLANKA_DB_USER}
-      POSTGRES_PASSWORD: ${PLANKA_DB_PASS}
-      PGDATA: /var/lib/postgresql/data/db
-      #- POSTGRES_HOST_AUTH_METHOD=trust
+      PUID: "${DEFAULT_PUID}"
+      PGID: "${DEFAULT_PGID}"
+      TIMEZONE: "${DEFAULT_TIMEZONE}"
+      MYSQL_ROOT_PASSWORD: "${BOOKSTACK_DB_MYSQL_ROOT_PASSWORD}"
+      TZ: "${BOOKSTACK_DB_TZ}"
+      MYSQL_DATABASE: "${BOOKSTACK_DB_MYSQL_DATABASE}"
+      MYSQL_USER: "${BOOKSTACK_DB_MYSQL_USER}"
+      MYSQL_PASSWORD: "${BOOKSTACK_DB_MYSQL_PASSWORD}"
+    volumes:
+      - ./data/bookstack-db:/config     
+    restart: unless-stopped
 
+  leandb:
+    image: mysql
+    restart: unless-stopped
+    container_name: leandb
+    volumes:
+      - ./data/kanban-db:/var/lib/mysql     
+    environment:
+      user: "${DEFAULT_PUID}:${DEFAULT_PGID}"
+      MYSQL_DATABASE: ${LEANTIME_DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${LEANTIME_DB_ROOT_PASS}      
+      MYSQL_USER: ${LEANTIME_DB_USER}      
+      MYSQL_PASSWORD: ${LEANTIME_DB_PASSWORD}      
+
+  leantime:
+    image: leantime/leantime:latest
+    container_name: leantime
+    restart: unless-stopped
+    environment:
+      LEAN_APP_URL: "http://${LEANTIME_DOMAIN}.${ROOT_DOMAIN}"
+      LEAN_DB_HOST: ${LEANTIME_DB_HOST}
+      LEAN_DB_USER: ${LEANTIME_DB_USER}
+      LEAN_DB_PASSWORD: ${LEANTIME_DB_PASSWORD}
+      LEAN_DB_DATABASE: ${LEANTIME_DB_DATABASE}
+      LEAN_SITENAME: ${LEANTIME_SITENAME}
+      LEAN_LANGUAGE: ${LEANTIME_LANGUAGE}
+      LEAN_DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE}
+    volumes:
+      - ./data/kanban/public_userfiles:/var/www/html/public/userfiles     # Volume to store public files, logo etc
+      - ./data/kanban/userfiles:/var/www/html/userfiles                   # Volume to store private user uploaded files
+    depends_on:
+      - leandb
+      - traefik   
+    networks:
+      default:
+        aliases:
+            - "${LEANTIME_DOMAIN}.${ROOT_DOMAIN}"      
+    labels:
+      - "traefik.enable=true"
+      #- "traefik.http.routers.bookstack-http.entrypoints=http"
+      - "traefik.http.routers.leantime.rule=Host(`${LEANTIME_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.leantime.entrypoints=http"
+      #- "traefik.http.routers.leantime.tls=true"
+      #- "traefik.http.routers.leantime.tls.certresolver=internalca"         
+      - "traefik.http.services.leantime.loadbalancer.server.port=80"
+      
   mindmapdb:
     image: mysql
     restart: unless-stopped
     container_name: mindmapdb
     volumes:
       - ./data/mindmap-db:/var/lib/mysql
+      #- ./scripts/mindmap/build_db.sql:/docker-entrypoint-initdb.d/init.sql
 
 ###################################################################################################################
 ###################################################################################################################
@@ -167,7 +238,7 @@ services:
 
 ###################################################################################################################      
     environment:
-      user: "1000:1000"
+      user: "${DEFAULT_PUID}:${DEFAULT_PGID}"
       MYSQL_DATABASE: ${WISEMAPPING_DB_NAME}
       MYSQL_ROOT_PASSWORD: ${WISEMAPPING_ROOT_PASS}      
     labels:
@@ -177,13 +248,13 @@ services:
       - "traefik.tcp.routers.minmap-mysql.service=minmap-mysql-svc"
       - "traefik.tcp.services.minmap-mysql-svc.loadbalancer.server.port=3306"
 
-  #docker run --rm -it --entrypoint bash wisemapping/wisemapping
   mindmap:
-    image: wisemapping/wisemapping
+    image: wisemapping/wisemapping:5.0.14
     restart: unless-stopped
     container_name: mindmap
     depends_on:
       - mindmapdb
+      - traefik
 #    healthcheck:
 #      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
 #      interval: 1m30s
@@ -195,8 +266,11 @@ services:
       #- ./data/mindmap-db:/var/lib/wisemapping/db
       #- ./data/mindmap-db:/var/lib/wise-db
 
-       - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties      
+      - ./config/mindmap/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties      
     environment:
+      TZ: ${DEFAULT_TIMEZONE}
+      PUID: ${DEFAULT_PUID}
+      GUID: ${DEFAULT_PGID}        
 #      - BASE_URL=https://planka.noodle.local
       BASE_URL: "http://${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}"
     labels:
@@ -205,8 +279,132 @@ services:
       - "traefik.http.routers.mindmap-http.rule=Host(`${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}`)"
       #- "traefik.http.routers.mindmap-http.middlewares=planka-https"
       - "traefik.http.services.mindmap-http.loadbalancer.server.port=8080"
-      #- "traefik.http.middlewares.mindmap-https.redirectscheme.scheme=https"
-      #- "traefik.http.routers.mindmap.entrypoints=https"
-      #- "traefik.http.routers.mindmap.rule=Host(`mindmap.noodle.local`)"
-      #- "traefik.http.routers.mindmap.tls=true"
-      #- "traefik.docker.network=traefik_proxy"
+
+
+
+  duplicati:
+    image: lscr.io/linuxserver/duplicati:latest
+    container_name: duplicati
+    environment:
+      - PUID=0
+      - PGID=${DEFAULT_PGID}
+      - TZ=${DEFAULT_TIMEZONE}
+      #- CLI_ARGS= #optional
+    volumes:
+      - ./data/dupicatti/config:/config
+      - ./backups:/backups
+      - ./data:/source:ro
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backup.rule=Host(`${BACKUP_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.backup.entrypoints=http"       
+      - "traefik.http.services.backup.loadbalancer.server.port=8200"
+
+  logserver:
+    container_name: logserver
+    image: amir20/dozzle:latest
+#    healthcheck:
+#      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080 || exit 1"]
+#      interval: 1m30s
+#      timeout: 10s
+#      retries: 5    
+#      start_period: 15s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
+    environment:
+      - DOZZLE_NO_ANALYTICS=true
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/London        
+    networks:
+      default:
+        aliases:
+          - "${LOGS_DOMAIN}.${ROOT_DOMAIN}" 
+    depends_on:
+      - traefik    
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.logserver.rule=Host(`${LOGS_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.logserver.entrypoints=http"
+      #- "traefik.http.routers.logserver.tls=true"
+      #- "traefik.http.routers.logserver.tls.certresolver=internalca"        
+      - "traefik.http.services.logserver.loadbalancer.server.port=8080"
+
+#  watchtower:
+#    container_name: watchtower
+#    image: containrrr/watchtower
+#    restart: always
+#    command: --schedule "0 0 4 * * *" --cleanup
+#    volumes:
+      # NOTE: THe TARGET DOCKER SOCK IS NOT IN THE DEFAULT LOCATION;
+      #https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
+#      - /var/run/docker.sock:/var/run/docker.sock
+#    networks:
+#      - service
+
+
+
+#docker compose -f docker-compose.yml run acmeca --rm -it --env-file .env bash
+ 
+#  acmeca:
+#      image: acmeca:latest
+#      build: 
+#          context: ./build/acmeca
+#          dockerfile: Dockerfile            
+#      container_name: acmeca
+#      restart: unless-stopped
+#      environment: 
+#          - PASSWORD="${CA_PASSWORD}
+#          - AUTHORITY_NAME="${CA_AUTHORITY_NAME}"
+#          - CA_AREA="${CA_AREA}"
+#          - DNS_TLS_HOSTNAMES="${CA_DNS_TLS_HOSTNAMES}"
+#      volumes: 
+#          - ./data/acmeca:/home/step
+#          - /etc/localtime:/etc/localtime:ro
+#          - /etc/timezone:/etc/timezone:ro
+          #- /etc/resolv.conf:/etc/resolv.conf:ro     
+#      networks:
+#        default:
+#          aliases:
+#            - "${CA_DNS_FQDN}"
+#      labels:
+#          - "traefik.tcp.routers.acmeca.rule=HostSNI(`*`)"
+#          - "traefik.tcp.routers.acmeca.tls.passthrough=true"            
+#          - "traefik.tcp.routers.acmeca.service=acmeca@docker"
+#          - "traefik.tcp.routers.acmeca.entrypoints=https"            
+#          - "traefik.tcp.services.acmeca.loadbalancer.server.port=443"    
+#          - com.centurylinklabs.watchtower.enable=true    
+#          - "traefik.enable=true"
+ 
+#  paperless-ng:
+#    image: linuxserver/paperless-ng
+#    container_name: paperless-ng
+#    restart: unless-stopped
+#    environment:
+#      - PUID=1000
+#      - PGID=1000
+#      #- REDIS_URL= #optional
+#    volumes:
+#      - ./data/paperless/config:/config
+#      - ./data/paperless/data:/data
+#    labels:
+#      - "traefik.enable=true"
+#      - "traefik.http.routers.paperless.rule=Host(`paperless.noodle.local`)"
+#      - "traefik.http.services.paperless.loadbalancer.server.port=8000"    
+
+
+## Autoheal - Restart Unhealthy Containers
+#  autoheal:
+#    container_name: autoheal
+#    image: willfarrell/autoheal
+#    restart: always
+#    volumes:
+      # NOTE: THe TARGET DOCKER SOCK IS NOT IN THE DEFAULT LOCATION;
+      #https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
+#      - /mnt/wsl/shared-docker/docker.sock:/var/run/docker.sock
+      #- /var/run/docker.sock:/var/run/docker.sock
+#    environment:
+#      - AUTOHEAL_CONTAINER_LABEL=all
+#      - AUTOHEAL_INTERVAL=60 
+#      - AUTOHEAL_START_PERIOD=30
