@@ -2,7 +2,16 @@
 # Usage
 
 ## FIRST USE
-The DB is blank, you need to uncomment the volume on line `166` of the `docker-compose.yml` file.  This will create a new DB and schema within the MySQL database, IF YOU DO NOT COMMENT OUT THE VOLUME THE DB WILL WIPE UPON NEXT START UP.
+### HTTPS Certs
+THIS DOCKER COMPOSE USES TLS CERTS.
+
+For first run, please execute [bootstrap.sh](./scripts/bootstrap.sh). This will generate a new CA and place it in the `config/ca` directory.
+
+Import the public key into your system keystore and enjoy HTTPS connections.
+
+
+### Wisemapping
+The DB is blank, you need to uncomment the volume on line `254` of the `docker-compose.yml` file.  This will create a new DB and schema within the MySQL database, IF YOU DO NOT COMMENT OUT THE VOLUME THE DB WILL WIPE UPON NEXT START UP.
 
 ## Running
 
@@ -19,13 +28,15 @@ file.  Some additional guidance is provided within the `.env` file.
 # DNS
 Plase the following in your hosts file or DNS server and update the IP and desired domain:
 
-`127.0.0.1 admin.eccentic.local logs.eccentic.local task.eccentic.local mindmap.eccentic.local draw.eccentic.local bookstack.eccentic.local backup.eccentic.local`
+`127.0.0.1 admin.eccentic.local logs.eccentic.local task.eccentic.local mindmap.eccentic.local draw.eccentic.local bookstack.eccentic.local backup.eccentic.local ca.eccentic.local smtp.eccentic.local`
 
 
 | DNS                       | Description                                 | Software |
 | ------------------------- | ------------------------- | ------------------------------------------- |
 | admin.eccentric.local                              | Reverse Proxy                                      | [Traefik](https://traefik.io/traefik/)                                                 |
+| auth.eccentric.local                              | Authentication Server                               | [Authelia](https://www.authelia.com/)                                                 |
 | logs.eccentric.local                               | Log Viewer                                         | [Dozzle](https://dozzle.dev/)                                                          |
+| smtp.eccentric.local                               | Email Server                                        | [Mailpit](https://github.com/axllent/mailpit)                                                   |
 | task.eccentric.local                               | Task Management                                    | [Leantime](https://leantime.io/)                                                       |
 | mindmap.eccentric.local                            | Mind Map                                           | [Wisemapping](https://www.wisemapping.com/)                                            |
 | bookstack.eccentric.local                          | Info Storage/Organisation                          | [Bookstack](https://www.bookstackapp.com/)                                             |

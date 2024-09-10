@@ -1,0 +1,118 @@
+###############################################################
+#                   Authelia configuration                    #
+###############################################################
+#https://www.authelia.com/configuration/methods/environment/
+
+# https://www.authelia.com/configuration/miscellaneous/introduction/#default_redirection_url
+# default_redirection_url: 'http://${AUTH_DOMAIN}.${TOP_DOMAIN}'
+
+server:
+  address: tcp://0.0.0.0:9091/
+  buffers:
+    read: 4096
+    write: 4096
+  endpoints:
+    enable_pprof: false
+    enable_expvars: false
+  disable_healthcheck: false
+  tls:
+    key: ""
+    certificate: ""
+
+# https://www.authelia.com/configuration/miscellaneous/logging/
+log:
+  level: debug
+  format: text
+  file_path: /config/authelia.log
+  keep_stdout: true
+
+# https://www.authelia.com/configuration/second-factor/time-based-one-time-password/
+totp:
+  issuer: ${AUTH_TOTP_ISSUER}
+  period: 30
+  skew: 1
+
+# AUTHELIA_DUO_PLACEHOLDER
+
+# https://www.authelia.com/reference/guides/passwords/
+authentication_backend:
+  password_reset:
+    disable: false
+  refresh_interval: 5m
+  file:
+    path: /config/users.yml
+    password:
+      algorithm: argon2id
+      iterations: 1
+      salt_length: 16
+      parallelism: 8
+      memory: 256 # blocks this much of the RAM
+
+# https://www.authelia.com/overview/authorization/access-control/
+access_control:
+  default_policy: deny
+  rules:
+    - domain:
+        -  ${AUTH_DOMAIN}.${ROOT_DOMAIN}
+        -  ${LOGS_DOMAIN}.${ROOT_DOMAIN}
+      policy: bypass
+    - domain:
+        - "*.${ROOT_DOMAIN}"
+        - "${ROOT_DOMAIN}"
+      policy: one_factor
+
+identity_validation:
+  reset_password:
+    jwt_lifespan: '5 minutes'
+    jwt_algorithm: 'HS256'
+    jwt_secret: ${AUTH_JWT_ENCRYPTION_KEY}
+
+# need to generate a private key to sign OIDC payloads
+# https://blog.lrvt.de/configuring-authelia-oidc-for-immich/
+# https://www.authelia.com/configuration/identity-providers/openid-connect/provider/
+
+
+
+# https://www.authelia.com/configuration/session/introduction/
+session:
+  name: authelia_session
+  same_site: lax
+  expiration: 7h
+  inactivity: 30m
+  remember_me: 1M
+  cookies:
+    - domain: ${ROOT_DOMAIN}
+      authelia_url: https://${AUTH_DOMAIN}.${ROOT_DOMAIN}
+      default_redirection_url: https://${LOGS_DOMAIN}.${ROOT_DOMAIN}
+  # AUTHELIA_REDIS_PLACEHOLDER
+
+# https://www.authelia.com/configuration/security/regulation/
+regulation:
+  max_retries: 3
+  find_time: 10m
+  ban_time: 12h
+  
+# https://www.authelia.com/configuration/storage/introduction/
+storage:
+  # For local storage, uncomment lines below and comment out mysql. https://docs.authelia.com/configuration/storage/sqlite.html
+  # This is good for the beginning. If you have a busy site then switch to other databases.
+  encryption_key: ${AUTH_STORAGE_ENCRYPTION_KEY}
+  local:
+   path: /config/db.sqlite3
+
+# https://www.authelia.com/configuration/notifications/introduction/
+notifier:
+  disable_startup_check: true
+  # For testing purposes, notifications can be sent in a file. Be sure to map the volume in docker-compose.
+  smtp:
+    address: smtp://${AUTHELIA_NOTIFIER_SMTP_ADDRESS}
+    timeout: '5s'
+    username: 'test'
+    password: 'password'
+    sender: "${AUTH_NOTIFIER_SMTP_SENDER}"
+    identifier: ${AUTH_DOMAIN}.${ROOT_DOMAIN}
+    subject: "${AUTH_NOTIFIER_SMTP_SUBJECT}"
+    startup_check_address: ${AUTH_NOTIFIER_SMTP_STARTUP_CHECK_ADDRESS:-true}
+    disable_require_tls: ${AUTH_NOTIFIER_SMTP_DISABLE_REQUIRE_TLS:-true}
+    disable_starttls: ${AUTH_NOTIFIER_SMTP_TLS_SKIP_VERIFY:-true}
+    disable_html_emails: false

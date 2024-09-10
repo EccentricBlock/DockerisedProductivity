@@ -20,25 +20,16 @@ services:
         --providers.docker=true
         --providers.docker.endpoint=unix:///var/run/docker.sock
         --providers.docker.exposedbydefault=false
-        --entrypoints.http.address=:80/tcp
-        --entrypoints.https.address=:443/tcp
-
-        
-
-
-#        --certificatesResolvers.internalca.acme.caServer="https://${CA_DNS_FQDN}/acme/acme/directory"
-#        --certificatesResolvers.internalca.acme.email="${CA_EMAIL}"
-#        --certificatesResolvers.internalca.acme.storage=/acme/acme.json
-#        --certificatesResolvers.internalca.acme.keyType=EC256
-#        --certificatesResolvers.internalca.acme.tlschallenge=true
-#        --certificatesResolvers.internalca.acme.httpChallenge=true
-#        --certificatesResolvers.internalca.acme.httpChallenge.entryPoint=http      
-         #--entrypoints.acmeca.address=:9000/tcp  
-#        --entrypoints.mqtt.address=:1883/tcp
-#        --entrypoints.mqttwebsocket.address=:9001/tcp
-#        --entrypoints.web.http.redirections.entrypoint.to=https
-#        --entrypoints.web.http.redirections.entrypoint.scheme=https
-#        --accessLog.filePath=/traefik.log
+        --entrypoints.smtp.address=:25
+        --entrypoints.web.address=:80
+        --entrypoints.websecure.address=:443
+        --entrypoints.web.http.redirections.entrypoint.to=websecure
+        --entrypoints.web.http.redirections.entrypoint.scheme=https
+        --certificatesresolvers.internalca.acme.caServer=https://${ACMECA_DOMAIN}.${ROOT_DOMAIN}/acme/directory
+        --certificatesresolvers.internalca.acme.httpChallenge=true
+        --certificatesresolvers.internalca.acme.httpChallenge.entryPoint=websecure
+        --certificatesresolvers.internalca.acme.email=admin@${ROOT_DOMAIN}
+        --certificatesresolvers.internalca.acme.storage=/acme/acme.json
     security_opt:
       - no-new-privileges:true
     ports:
@@ -51,16 +42,17 @@ services:
       - "9000:9000" # AcmeCA
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro # ENSURE READ-ONLY
-#      - ./data/acmeca/certs/root_ca.crt:/rootca.crt
-#      - ./data/traefik/acme/:/acme/
+      - ./config/traefik/acme:/acme
+      - ./config/ca/root.key:/root.key:ro
     environment:
       - TZ=${DEFAULT_TIMEZONE}
       - PUID=${DEFAULT_PUID}
       - GUID=${DEFAULT_PGID}
+      - SSL_CERT_FILE=/root.key
 #      - LEGO_CA_CERTIFICATES=/rootca.crt
 #      - LEGO_CA_SERVER_NAME=${CA_DNS_FQDN}
-#    depends_on:
-#      - acmeca      
+    depends_on:
+      - acmeca      
     networks:
       default:
         aliases:
@@ -76,6 +68,75 @@ services:
       - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DOMAIN}.${ROOT_DOMAIN}`)"
 #      - "traefik.http.routers.traefik.tls=true"
 #      - "traefik.http.routers.traefik.tls.certresolver=internalca"
+
+
+  smtp:
+    image: axllent/mailpit:latest
+    container_name: smtp
+    networks:
+      default:
+        aliases:
+          - ${SMTP_DOMAIN}.${ROOT_DOMAIN}       
+    depends_on:
+      - revproxy
+    environment:
+      - MP_SMTP_ALLOWED_RECIPIENTS=${SMTP_WHITELIST_DOMAINS}
+      - MP_SMTP_AUTH_ACCEPT_ANY=true
+      - MP_SMTP_AUTH_ALLOW_INSECURE=true
+      - MP_SMTP_REQUIRE_TLS=false
+      #- MP_SMTP_AUTH="user1:password1 user2:password"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.smtp.entrypoints=smtp"
+      - "traefik.tcp.services.smtp.loadbalancer.server.port=1025"   
+      - "traefik.http.routers.smtp-ui.entrypoints=websecure"
+      - "traefik.http.routers.smtp-ui.rule=Host(`${SMTP_DOMAIN}.${ROOT_DOMAIN}`)"
+      - "traefik.http.services.smtp-ui.loadbalancer.server.port=8025"   
+      - "traefik.http.routers.smtp-ui.tls=true"
+      - "traefik.http.routers.smtp-ui.tls.certresolver=internalresolver"
+
+  authelia:
+    image: authelia/authelia
+    container_name: auth
+    volumes:
+      - ./data/authelia:/config
+      - ./config/authelia/configuration.yml:/config/configuration.yml
+    networks:
+      default:
+        aliases:
+          - ${AUTH_DOMAIN}.${ROOT_DOMAIN}
+    restart: unless-stopped
+    healthcheck:
+      ## In production the healthcheck section should be commented.
+      disable: true
+    environment:
+      - AUTHELIA_NOTIFIER_SMTP_ADDRESS=${AUTH_NOTIFIER_SMTP_ADDRESS:-smtp:8025}
+      - AUTHELIA_NOTIFIER_SMTP_IDENTIFIER=${AUTH_DOMAIN}.${ROOT_DOMAIN}
+      - AUTHELIA_NOTIFIER_SMTP_SENDER=${AUTH_NOTIFIER_SMTP_SENDER:-Authelia <admin@${ROOT_DOMAIN}>}
+      - AUTHELIA_NOTIFIER_SMTP_SUBJECT=${AUTH_NOTIFIER_SMTP_SUBJECT:-"[Authelia] {title}"}
+      - AUTHELIA_NOTIFIER_SMTP_STARTUP_CHECK_ADDRESS=${AUTH_NOTIFIER_SMTP_STARTUP_CHECK_ADDRESS:-test@${ROOT_DOMAIN}}
+      - AUTHELIA_NOTIFIER_SMTP_DISABLE_REQUIRE_TLS=${AUTH_NOTIFIER_SMTP_DISABLE_REQUIRE_TLS:-true}
+      - AUTHELIA_NOTIFIER_SMTP_TLS_SKIP_VERIFY=${AUTH_NOTIFIER_SMTP_TLS_SKIP_VERIFY:-true}
+      - AUTHELIA_TOTP_ISSUER=${AUTH_TOTP_ISSUER:-eccentric.local}
+      - AUTHELIA_AUTHENTICATION_BACKEND_FILE_PATH=/config/users.yml
+      - X_AUTHELIA_CONFIG_FILTERS=expand-env,template
+      - X_AUTHELIA_CONFIG=/config/configuration.yml
+      - TOP_DOMAIN=${ROOT_DOMAIN}
+      - AUTH_DOMAIN=${AUTH_DOMAIN}
+      - LOGS_DOMAIN=${LOGS_DOMAIN}
+      - AUTH_STORAGE_ENCRYPTION_KEY=${AUTH_STORAGE_ENCRYPTION_KEY}
+      - AUTH_JWT_ENCRYPTION_KEY=${AUTH_JWT_ENCRYPTION_KEY}
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.auth.rule=Host(`${AUTH_DOMAIN}.${ROOT_DOMAIN}`)'
+      - 'traefik.http.routers.auth.entrypoints=websecure'
+      - "traefik.http.services.auth.loadbalancer.server.port=9091"
+      - 'traefik.http.routers.auth.tls=true'
+      - "traefik.http.routers.auth.tls.certresolver=internalresolver"
+      - 'traefik.http.middlewares.auth.forwardauth.address=https://${AUTH_DOMAIN}.${ROOT_DOMAIN}/api/authz/forward-auth'  # yamllint disable-line rule:line-length
+      - 'traefik.http.middlewares.auth.forwardauth.trustForwardHeader=true'
+      - 'traefik.http.middlewares.auth.forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email'  # yamllint disable-line rule:line-length
+
 
   drawio:
     image: jgraph/drawio
@@ -94,7 +155,7 @@ services:
       TZ: ${DEFAULT_TIMEZONE}
       PUID: ${DEFAULT_PUID}
       GUID: ${DEFAULT_PGID}    
-      DRAWIO_BASE_URL: "http://${DRAWIO_DOMAIN}.${ROOT_DOMAIN}"
+      DRAWIO_BASE_URL: "https://${DRAWIO_DOMAIN}.${ROOT_DOMAIN}"
 #      - DRAWIO_GOOGLE_CLIENT_ID=abcd1234   # Google Drive
 #      - DRAWIO_MSGRAPH_CLIENT_ID=abcd1234   # OneDrive
 #      - DRAWIO_GITLAB_ID=abcd1234   # GitLab ID
@@ -107,9 +168,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.drawio.rule=Host(`${DRAWIO_DOMAIN}.${ROOT_DOMAIN}`)"
-      - "traefik.http.routers.drawio.entrypoints=http"
-#      - "traefik.http.routers.drawio.tls=true"
-#      - "traefik.http.routers.drawio.tls.certresolver=internalca"      
+      - "traefik.http.routers.drawio.entrypoints=websecure"
+      - "traefik.http.routers.drawio.tls=true"
+      - "traefik.http.routers.drawio.tls.certresolver=internalca"      
       - "traefik.http.services.drawio.loadbalancer.server.port=8080"
 
 
@@ -119,7 +180,7 @@ services:
     environment:
       PUID: "${DEFAULT_PUID}"
       PGID: "${DEFAULT_PGID}"
-      APP_URL: "http://${BOOKSTACK_DOMAIN}.${ROOT_DOMAIN}"
+      APP_URL: "https://${BOOKSTACK_DOMAIN}.${ROOT_DOMAIN}"
       DB_HOST: "${BOOKSTACK_DB_HOST}"
       DB_PORT: "${BOOKSTACK_DB_PORT}"
       DB_USER: "${BOOKSTACK_DB_USER}"
@@ -150,11 +211,11 @@ services:
       - "traefik.enable=true"
       #- "traefik.http.routers.bookstack-http.entrypoints=http"
       - "traefik.http.routers.bookstack.rule=Host(`${BOOKSTACK_DOMAIN}.${ROOT_DOMAIN}`)"
-      - "traefik.http.routers.bookstack.entrypoints=http"
+      - "traefik.http.routers.bookstack.entrypoints=websecure"
       - "traefik.tcp.routers.bookstack.service=bookstack-svc"
       - "traefik.tcp.services.bookstack-svc.loadbalancer.server.port=80"      
-      #- "traefik.http.routers.bookstack.tls=true"
-      #- "traefik.http.routers.bookstack.tls.certresolver=internalca"      
+      - "traefik.http.routers.bookstack.tls=true"
+      - "traefik.http.routers.bookstack.tls.certresolver=internalca"      
 
 
   bookstack_db:
@@ -191,7 +252,7 @@ services:
     container_name: leantime
     restart: unless-stopped
     environment:
-      LEAN_APP_URL: "http://${LEANTIME_DOMAIN}.${ROOT_DOMAIN}"
+      LEAN_APP_URL: "https://${LEANTIME_DOMAIN}.${ROOT_DOMAIN}"
       LEAN_DB_HOST: ${LEANTIME_DB_HOST}
       LEAN_DB_USER: ${LEANTIME_DB_USER}
       LEAN_DB_PASSWORD: ${LEANTIME_DB_PASSWORD}
@@ -214,8 +275,8 @@ services:
       #- "traefik.http.routers.bookstack-http.entrypoints=http"
       - "traefik.http.routers.leantime.rule=Host(`${LEANTIME_DOMAIN}.${ROOT_DOMAIN}`)"
       - "traefik.http.routers.leantime.entrypoints=http"
-      #- "traefik.http.routers.leantime.tls=true"
-      #- "traefik.http.routers.leantime.tls.certresolver=internalca"         
+      - "traefik.http.routers.leantime.tls=true"
+      - "traefik.http.routers.leantime.tls.certresolver=internalca"         
       - "traefik.http.services.leantime.loadbalancer.server.port=80"
       
   mindmapdb:
@@ -224,8 +285,6 @@ services:
     container_name: mindmapdb
     volumes:
       - ./data/mindmap-db:/var/lib/mysql
-      #- ./scripts/mindmap/build_db.sql:/docker-entrypoint-initdb.d/init.sql
-
 ###################################################################################################################
 ###################################################################################################################
 #             RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          RUN ON FIRST USE ONLY          
@@ -266,19 +325,21 @@ services:
       #- ./data/mindmap-db:/var/lib/wisemapping/db
       #- ./data/mindmap-db:/var/lib/wise-db
 
-      - ./config/mindmap/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties      
+      - ./config/wisemapping/app.properties:/usr/local/tomcat/webapps/ROOT/WEB-INF/app.properties      
     environment:
       TZ: ${DEFAULT_TIMEZONE}
       PUID: ${DEFAULT_PUID}
       GUID: ${DEFAULT_PGID}        
 #      - BASE_URL=https://planka.noodle.local
-      BASE_URL: "http://${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}"
+      BASE_URL: "https://${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.mindmap-http.entrypoints=http"
+      - "traefik.http.routers.mindmap-http.entrypoints=websecure"
       - "traefik.http.routers.mindmap-http.rule=Host(`${WISEMAPPING_DOMAIN}.${ROOT_DOMAIN}`)"
       #- "traefik.http.routers.mindmap-http.middlewares=planka-https"
       - "traefik.http.services.mindmap-http.loadbalancer.server.port=8080"
+      - "traefik.http.routers.mindmap.tls=true"
+      - "traefik.http.routers.mindmap.tls.certresolver=internalca"  
 
 
 
@@ -298,7 +359,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backup.rule=Host(`${BACKUP_DOMAIN}.${ROOT_DOMAIN}`)"
-      - "traefik.http.routers.backup.entrypoints=http"       
+      - "traefik.http.routers.backup.entrypoints=websecure"       
       - "traefik.http.services.backup.loadbalancer.server.port=8200"
 
   logserver:
@@ -326,9 +387,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.logserver.rule=Host(`${LOGS_DOMAIN}.${ROOT_DOMAIN}`)"
-      - "traefik.http.routers.logserver.entrypoints=http"
-      #- "traefik.http.routers.logserver.tls=true"
-      #- "traefik.http.routers.logserver.tls.certresolver=internalca"        
+      - "traefik.http.routers.logserver.entrypoints=websecure"
+      - "traefik.http.routers.logserver.tls=true"
+      - "traefik.http.routers.logserver.tls.certresolver=internalca"        
       - "traefik.http.services.logserver.loadbalancer.server.port=8080"
 
 #  watchtower:
